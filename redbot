@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+
+from dataclasses import dataclass
+import asyncio
+import enum
+import json
+import nio
+import os
+import pickle
+import requests
+import sys
+import time
+
+RedTopTenTag = enum.IntEnum("RedTopTenTag", "DAY WEEK OVERALL SNATCHED DATA SEEDED", start=0)
+
+@dataclass
+class RedRelease:
+    torrent_id: int
+    group_id: int
+    artist_name: str
+    group_name: str
+    image: str
+
+class MatrixClient(nio.AsyncClient):
+    async def cb_autojoin(self, room, event):
+        this.join(room.id)
+
+    async def cb_message(self, room, event):
+        print(f"message in {room.display_name}: {event.sender}: {event.body}")
+
+    async def send_all(self, content):
+        for room_id in (await self.joined_rooms()).rooms:
+            await self.room_send(
+                room_id=room_id, message_type="m.room.message", content=content
+            )
+
+def seen_ids_set(path, ids):
+    with open(path, 'wb') as handle:
+        pickle.dump(ids, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+def seen_ids_get(path):
+    try:
+        with open(path, 'rb') as handle:
+            return pickle.load(handle)
+    except FileNotFoundError:
+        return set()
+
+def get_top_ten(base_url, api_key):
+    raw = requests.post(
+        base_url, headers={"Authorization": api_key}, params={"action": "top10"}
+    )
+    resp = raw.json()["response"]
+    items = resp[RedTopTenTag.DAY]["results"]
+    return [
+        RedRelease(
+            item["torrentId"],
+            item["groupId"],
+            item["artist"],
+            item["groupName"],
+            item["wikiImage"],
+        )
+        for item in items
+    ]
+
+def message_from_release(release):
+    # TODO use `release.image` with <img>
+    # https://matrix.org/docs/spec/client_server/latest#m-room-message-msgtypes
+    # https://matrix.org/docs/spec/client_server/latest#module-content
+    return f'''<h1>{release.artist_name}</h1><h3><i>{release.group_name}</i></h3>'''
+
+async def top_ten_iter(client, config):
+    seen_ids = seen_ids_get(config["db_path"])
+    releases = get_top_ten(config["red_base_url"], config["red_api_key"])
+    for release in releases:
+        if release.group_id in seen_ids:
+            print("skipping", release.group_id)
+            continue
+        print("sending", release.group_id)
+        seen_ids.add(release.group_id)
+        message = message_from_release(release)
+        await client.send_all({
+            "msgtype": "m.text",
+            "format": "org.matrix.custom.html",
+            "formatted_body": message,
+            "body": message,
+        })
+    seen_ids_set(config["db_path"], seen_ids)
+
+async def start(config):
+    client = MatrixClient(config["matrix_homeserver"], config["matrix_username"])
+    client.add_event_callback(client.cb_autojoin, nio.InviteEvent)
+    client.add_event_callback(client.cb_message, nio.RoomMessageText)
+    await client.login(config["matrix_password"])
+    while True:
+        await top_ten_iter(client, config)
+        await asyncio.sleep(config["update_interval_secs"])
+
+def must_env(key):
+    try:
+        return os.environ[key]
+    except KeyError:
+        print(f"please provide {key}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    event_loop = asyncio.get_event_loop()
+    event_loop.run_until_complete(start({
+        "red_api_key": must_env("RED_API_KEY"),
+        "red_base_url": "https://redacted.ch/ajax.php",
+        "matrix_homeserver": must_env("MATRIX_HOMESERVER"),
+        "matrix_username": must_env("MATRIX_USERNAME"),
+        "matrix_password": must_env("MATRIX_PASSWORD"),
+        "update_interval_secs": int(must_env("UPDATE_INTERVAL_SECS")),
+        "db_path": must_env("DB_PATH"),
+    }))
