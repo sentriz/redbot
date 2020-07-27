@@ -9,12 +9,12 @@
 redbot:
   build: redbot
   environment:
-  - RED_API_KEY=yourapikey
-  - MATRIX_HOMESERVER=https://my.homeserver
-  - MATRIX_USERNAME=@bot_username:my.homeserver
-  - MATRIX_PASSWORD=bot_password
-  - UPDATE_INTERVAL_SECS=300
-  - DB_PATH=/data/db
+  - REDBOT_RED_API_KEY=yourapikey
+  - REDBOT_MATRIX_HOMESERVER=https://my.homeserver
+  - REDBOT_MATRIX_USERNAME=@bot_username:my.homeserver
+  - REDBOT_MATRIX_PASSWORD=bot_password
+  - REDBOT_UPDATE_INTERVAL_SECS=300
+  - REDBOT_DB_PATH=/data/db
   volumes:
   - ./redbot_data:/data
 ```

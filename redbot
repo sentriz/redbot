@@ -3,18 +3,18 @@
 from dataclasses import dataclass
 import asyncio
 import enum
-import json
 import nio
 import os
 import pickle
 import requests
 import signal
 import sys
-import time
+
 
 RedTopTenTag = enum.IntEnum(
     "RedTopTenTag", "DAY WEEK OVERALL SNATCHED DATA SEEDED", start=0
 )
+
 
 @dataclass
 class RedRelease:
@@ -24,10 +24,11 @@ class RedRelease:
     group_name: str
     image: str
 
+
 class MatrixClient(nio.AsyncClient):
     async def cb_autojoin(self, room, event):
         print("invite to room", room)
-        this.join(room.id)
+        self.join(room.id)
 
     async def cb_message(self, room, event):
         print(f"message in {room.display_name}: {event.sender}: {event.body}")
@@ -51,9 +52,11 @@ class MatrixClient(nio.AsyncClient):
                 room_id=room_id, message_type="m.room.message", content=content
             )
 
+
 def seen_ids_set(path, ids):
     with open(path, "wb") as handle:
         pickle.dump(ids, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def seen_ids_get(path):
     try:
@@ -62,9 +65,10 @@ def seen_ids_get(path):
     except FileNotFoundError:
         return set()
 
+
 def get_top_ten(base_url, api_key):
     raw = requests.post(
-        base_url, headers={"Authorization": api_key}, params={"action": "top10"}
+        base_url, headers={"Authorization": api_key}, params={"action": "top10"},
     )
     resp = raw.json()["response"]
     items = resp[RedTopTenTag.DAY]["results"]
@@ -79,9 +83,11 @@ def get_top_ten(base_url, api_key):
         for item in items
     ]
 
+
 def message_from_release(release, image_uri):
     image_format = f"""<img src="{image_uri}">""" if image_uri else ""
     return f"""{image_format}<h1>{release.artist_name}</h1><h3><i>{release.group_name}</i></h3>"""
+
 
 async def top_ten_iter(client, config):
     seen_ids = seen_ids_get(config["db_path"])
@@ -96,13 +102,16 @@ async def top_ten_iter(client, config):
             release,
             (await client.upload_image_url(release.image)) if release.image else None,
         )
-        await client.send_all({
-            "msgtype": "m.text",
-            "format": "org.matrix.custom.html",
-            "formatted_body": message,
-            "body": message,
-        })
+        await client.send_all(
+            {
+                "msgtype": "m.text",
+                "format": "org.matrix.custom.html",
+                "formatted_body": message,
+                "body": message,
+            }
+        )
     seen_ids_set(config["db_path"], seen_ids)
+
 
 async def start(config):
     client = MatrixClient(config["matrix_homeserver"], config["matrix_username"])
@@ -113,6 +122,7 @@ async def start(config):
         await top_ten_iter(client, config)
         await asyncio.sleep(config["update_interval_secs"])
 
+
 def must_env(key):
     try:
         return os.environ[key]
@@ -120,16 +130,18 @@ def must_env(key):
         print(f"please provide {key}", file=sys.stderr)
         sys.exit(1)
 
+
 if __name__ == "__main__":
+    config = {
+        "red_api_key": must_env("REDBOT_RED_API_KEY"),
+        "red_base_url": "https://redacted.ch/ajax.php",
+        "matrix_homeserver": must_env("REDBOT_MATRIX_HOMESERVER"),
+        "matrix_username": must_env("REDBOT_MATRIX_USERNAME"),
+        "matrix_password": must_env("REDBOT_MATRIX_PASSWORD"),
+        "update_interval_secs": int(must_env("REDBOT_UPDATE_INTERVAL_SECS")),
+        "db_path": must_env("REDBOT_DB_PATH"),
+    }
     event_loop = asyncio.get_event_loop()
     event_loop.add_signal_handler(signal.SIGHUP, exit)
     event_loop.add_signal_handler(signal.SIGTERM, exit)
-    event_loop.run_until_complete(start({
-        "red_api_key": must_env("RED_API_KEY"),
-        "red_base_url": "https://redacted.ch/ajax.php",
-        "matrix_homeserver": must_env("MATRIX_HOMESERVER"),
-        "matrix_username": must_env("MATRIX_USERNAME"),
-        "matrix_password": must_env("MATRIX_PASSWORD"),
-        "update_interval_secs": int(must_env("UPDATE_INTERVAL_SECS")),
-        "db_path": must_env("DB_PATH"),
-    }))
+    event_loop.run_until_complete(start(config))
