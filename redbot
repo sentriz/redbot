@@ -70,6 +70,8 @@ def get_top_ten(base_url, api_key):
     raw = requests.post(
         base_url, headers={"Authorization": api_key}, params={"action": "top10"},
     )
+    if "json" not in raw.headers.get("content-type", ""):
+        return []
     resp = raw.json()["response"]
     items = resp[RedTopTenTag.DAY]["results"]
     return [
