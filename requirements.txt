@@ -1,0 +1,2 @@
+requests
+matrix-nio[e2e]
