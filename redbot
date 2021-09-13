@@ -68,7 +68,9 @@ def seen_ids_get(path):
 
 def get_top_ten(base_url, api_key):
     raw = requests.post(
-        base_url, headers={"Authorization": api_key}, params={"action": "top10"},
+        base_url,
+        headers={"Authorization": api_key},
+        params={"action": "top10"},
     )
     if "json" not in raw.headers.get("content-type", ""):
         return []
@@ -93,7 +95,10 @@ def message_from_release(release, image_uri):
 
 async def top_ten_iter(client, config):
     seen_ids = seen_ids_get(config["db_path"])
-    releases = get_top_ten(config["red_base_url"], config["red_api_key"])
+    try:
+        releases = get_top_ten(config["red_base_url"], config["red_api_key"])
+    except requests.exceptions.ConnectionError:
+        return
     for release in releases:
         if release.group_id in seen_ids:
             print("skipping", release.group_id)

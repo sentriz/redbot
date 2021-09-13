@@ -9,7 +9,7 @@ RUN \
 	make olm-python3 && \
 	cd .. && \
 	make PREFIX="/usr" install && \
-	pip install --user --requirement requirements.txt && \
+	pip install --user matrix-nio[e2e] requests && \
 	cd .. && \
 	rm -rf olm* && \
 	apk del build-base && \
